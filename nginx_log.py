@@ -42,25 +42,46 @@ def main():
     if len(sys.argv) <= 1:
         print 'please specify log file'
 
+    output_path = 'data/log.json'
     url_filter = None
     useragent_filter = None
 
     file_path = sys.argv[1]
     try:
-        url_filter = sys.argv[2]
-        useragent_filter = sys.argv[3]
+        output_path = sys.argv[2]
+        url_filter = sys.argv[3]
+        useragent_filter = sys.argv[4]
     except Exception, e:
         pass
 
+    logdata = []
+    # attempt to load existing log data
+    try:
+        with open(output_path) as f:
+            logdata = json.load(f)
+    except Exception, e:
+        pass
+
+    # get date and time of the last entry
+    if len(logdata) > 0:
+        last_entry_date = datetime.strptime(logdata[-1]['dateandtime'], "%Y-%m-%dT%H:%M:%S")
+    else:
+        last_entry_date = None
 
     regex = re.compile(r'(?P<ipaddress>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}) - - \[(?P<dateandtime>\d{2}\/[a-z]{3}\/\d{4}:\d{2}:\d{2}:\d{2} (\+|\-)\d{4})\] ((\"(GET|POST) )(?P<url>.+)(http\/1\.1")) (?P<statuscode>\d{3}) (?P<bytessent>\d+) (["](?P<refferer>(\-)|(.+))["]) (["](?P<useragent>.+)["])', re.IGNORECASE)
-    logdata = []
     with open(file_path) as f:
         for line in f:
             match = regex.match(line)
             if not match:
                 continue;
             data = match.groupdict()
+
+            if data.get('dateandtime', None):
+                dt = datetime.strptime(data['dateandtime'].split()[0], "%d/%b/%Y:%H:%M:%S")
+                data['dateandtime'] = dt.isoformat()
+
+            if last_entry_date and last_entry_date >= dt:
+                continue
 
             # filter
             if url_filter and url_filter not in data['url']:
@@ -73,15 +94,12 @@ def main():
             else:
                 data['geoip'] = {}
 
-            if data.get('dateandtime', None):
-                dt = datetime.strptime(data['dateandtime'].split()[0], "%d/%b/%Y:%H:%M:%S")
-                data['date_isoformat'] = dt.isoformat()
-            else:
-                data['date_isoformat'] = None
+            if data['geoip'].get('location', None) is None:
+                data['geoip']['location'] = {}
 
             logdata.append(data)
 
-    with open('data/log.json', 'w') as f:
+    with open(output_path, 'w') as f:
         json.dump(logdata, f, sort_keys=True, indent=4, separators=(',', ': '))
 
 if __name__ == '__main__':
